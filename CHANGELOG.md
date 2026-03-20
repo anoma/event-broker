@@ -1,3 +1,7 @@
+# v1.0.0
+
+- Separate out the Event Broker into it's own repository
+
 # v0.21.0
 
 - [Normalize values going into storage](https://github.com/anoma/anoma/pull/791)
