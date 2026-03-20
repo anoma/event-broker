@@ -159,7 +159,7 @@
           {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
           {Credo.Check.Warning.IExPry,
            files: %{
-             excluded: ["apps/anoma_lib/lib/test_helper/test_macro.ex"]
+             excluded: ["lib/event_broker/test_helper/test_macro.ex"]
            }},
           {Credo.Check.Warning.IoInspect, []},
           {Credo.Check.Warning.MissedMetadataKeyInLoggerConfig, []},
