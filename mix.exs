@@ -10,8 +10,9 @@ defmodule EventBroker.MixProject do
     [
       app: :event_broker,
       version: version(),
-      build_path: "._build",
+      build_path: "_build",
       config_path: "config/config.exs",
+      package: package(),
       deps_path: "deps",
       lockfile: "mix.lock",
       elixir: "~> 1.17",
@@ -25,6 +26,14 @@ defmodule EventBroker.MixProject do
     [
       mod: {EventBroker, []},
       extra_applications: [:ex_unit, :mix]
+    ]
+  end
+
+  def package do
+    [
+      maintainers: ["Mariari", " Raymond E. Pasco"],
+      name: :event_broker,
+      licenses: ["MIT"]
     ]
   end
 
