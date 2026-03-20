@@ -33,7 +33,9 @@ defmodule EventBroker.MixProject do
     [
       maintainers: ["Mariari", " Raymond E. Pasco"],
       name: :event_broker,
-      licenses: ["MIT"]
+      description: "A PubSub event broker with filtered subscriptions",
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/anoma/event-broker"}
     ]
   end
 
