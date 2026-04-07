@@ -3,10 +3,11 @@ defmodule Examples.EEventBroker.Subscribe do
   I define examples on how to susbcribe to topics in the event broker.
   """
 
-  alias Examples.EEVentBroker.EFilter
+  alias Examples.EEventBroker.EFilter
   alias EventBroker.Event
 
-  use ExUnit.Case
+  use ExExample
+  import ExUnit.Assertions
 
   # A list of default filters to use in the examples below.
   @filters [%EFilter.AcceptAll{}, %EFilter.Error{}]
@@ -16,7 +17,8 @@ defmodule Examples.EEventBroker.Subscribe do
   sent on the message broker.
   """
   @spec subscribe_to_filter(struct()) :: {:received, any()}
-  def subscribe_to_filter(filter \\ %EFilter.AcceptAll{}) do
+  @spec subscribe_to_filter() :: {:received, any()}
+  example subscribe_to_filter(filter \\ %EFilter.AcceptAll{}) do
     # subscribe to the trivial filter (i.e., all messages)
     EventBroker.subscribe_me([filter])
 
@@ -40,7 +42,8 @@ defmodule Examples.EEventBroker.Subscribe do
   """
 
   @spec subscribe_to_multiple_filters([struct()]) :: {:received, any()}
-  def subscribe_to_multiple_filters(filters \\ @filters) do
+  @spec subscribe_to_multiple_filters() :: {:received, any()}
+  example subscribe_to_multiple_filters(filters \\ @filters) do
     # subscribe to the trivial filter (i.e., all messages)
     EventBroker.subscribe_me(filters)
 
@@ -68,7 +71,8 @@ defmodule Examples.EEventBroker.Subscribe do
   I unsubscribe a process from a filter and verify that it is unsubscribed.
   """
   @spec unsubscribe_from_filter(struct()) :: {:received, any()}
-  def unsubscribe_from_filter(filter \\ %EFilter.AcceptAll{}) do
+  @spec unsubscribe_from_filter() :: {:received, any()}
+  example unsubscribe_from_filter(filter \\ %EFilter.AcceptAll{}) do
     # subscribe to the trivial filter (i.e., all messages)
     EventBroker.subscribe_me([filter])
 
@@ -91,7 +95,7 @@ defmodule Examples.EEventBroker.Subscribe do
   subscriptions when it goes offline.
   """
   @spec unsubscribe_on_down() :: any()
-  def unsubscribe_on_down() do
+  example unsubscribe_on_down do
     # any filter will do
     filter = %EFilter.AcceptAll{}
 

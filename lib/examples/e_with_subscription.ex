@@ -1,14 +1,15 @@
-defmodule Examples.EEVentBroker.WithSub do
+defmodule Examples.EEventBroker.WithSub do
   @moduledoc """
   I contain examples of how the `with_subscription` block works.
   """
 
-  alias Examples.EEVentBroker.EFilter
+  alias Examples.EEventBroker.EFilter
   alias EventBroker.Event
 
   import Examples.EEventBroker.Subscribe
 
-  use ExUnit.Case
+  use ExExample
+  import ExUnit.Assertions
   use EventBroker.WithSubscription
 
   # A list of default filters to use in the examples below.
@@ -19,7 +20,8 @@ defmodule Examples.EEVentBroker.WithSub do
   within this block are sent to me.
   """
   @spec with_subscription(struct()) :: struct()
-  def with_subscription(filter \\ %EFilter.AcceptAll{}) do
+  @spec with_subscription() :: struct()
+  example with_subscription(filter \\ %EFilter.AcceptAll{}) do
     # make sure this process is not already subscribed
     refute_subscription(filter)
 
@@ -48,7 +50,8 @@ defmodule Examples.EEVentBroker.WithSub do
   the messages sent within this block are sent to me.
   """
   @spec with_subscriptions([struct()]) :: [struct()]
-  def with_subscriptions(filters \\ @filters) do
+  @spec with_subscriptions() :: [struct()]
+  example with_subscriptions(filters \\ @filters) do
     # make sure this process is not already subscribed
     refute_subscription(filters)
 
@@ -77,7 +80,8 @@ defmodule Examples.EEVentBroker.WithSub do
   still exists after a `with_subscription` block that uses the same filter.
   """
   @spec with_existing_subscription(struct()) :: struct()
-  def with_existing_subscription(filter \\ %EFilter.AcceptAll{}) do
+  @spec with_existing_subscription() :: struct()
+  example with_existing_subscription(filter \\ %EFilter.AcceptAll{}) do
     # subscribe to the given filter
     EventBroker.subscribe_me([filter])
 
@@ -98,7 +102,8 @@ defmodule Examples.EEVentBroker.WithSub do
   I nest two with_subscription blocks and assert that the middle one is subscribed to the outer topics as well.
   """
   @spec with_nested_subscription([struct()]) :: [struct()]
-  def with_nested_subscription([filter1, filter2] \\ @filters) do
+  @spec with_nested_subscription() :: [struct()]
+  example with_nested_subscription([filter1, filter2] \\ @filters) do
     # no filter1
     refute_subscription(filter1)
 
