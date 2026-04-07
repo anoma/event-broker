@@ -1,4 +1,4 @@
-defmodule Examples.EEVentBroker.EFilter do
+defmodule Examples.EEventBroker.EFilter do
   @moduledoc """
   I define examples on how to use the deffilter macro to create filters for the event broker.
   """
