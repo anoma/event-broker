@@ -1,5 +1,6 @@
 # keep me alphabetized; non-runtime dependencies at the bottom.
 [
+  {:ex_example, "~> 0.1.1"},
   {:jason, "~> 1.4"},
   {:typed_struct, "~> 0.3.0"},
   # non-runtime dependencies below

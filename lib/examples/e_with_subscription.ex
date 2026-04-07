@@ -1,9 +1,9 @@
-defmodule Examples.EEVentBroker.WithSub do
+defmodule Examples.EEventBroker.WithSub do
   @moduledoc """
   I contain examples of how the `with_subscription` block works.
   """
 
-  alias Examples.EEVentBroker.EFilter
+  alias Examples.EEventBroker.EFilter
   alias EventBroker.Event
 
   import Examples.EEventBroker.Subscribe
