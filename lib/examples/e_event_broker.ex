@@ -428,6 +428,11 @@ defmodule Examples.EEventBroker do
 
   @spec kill_subscriber() :: boolean()
   def kill_subscriber do
+    # self-prepare: ensure the registry is in the clean baseline state
+    # this example asserts on. Without this prepend, the example only
+    # passes if it happens to run first.
+    unsub_all()
+
     # assert that the registry is now empty
     assert [[]] ==
              :sys.get_state(EventBroker.Registry).registered_filters
