@@ -74,9 +74,8 @@ This means `[spec1, spec2]` and `[spec2]` produce **distinct** filter agents —
 
 ## Examples and tests
 
-This project follows the example-driven pattern from the elixir-conventions skill:
+This project follows the example-driven pattern from the elixir-conventions skill, built on the [`ex_example`](https://hex.pm/packages/ex_example) framework:
 
-- Runnable examples live in `lib/examples/` as `Examples.E*` modules (e.g. `Examples.EEventBroker` in `lib/examples/e_event_broker.ex`). They are real `@spec`'d functions you can call from IEx; they double as the interactive documentation for the system's behavior.
-- Test files in `test/` are thin wrappers that call those example functions — see `test/event_broker_test.exs` for the pattern. To exercise a behavior, prefer adding/modifying an example over writing assertions inline in a test.
-- `EventBroker.TestHelper.GenerateExampleTests` (in `lib/event_broker/test_helper/`) can auto-generate one ExUnit test per arity-0 public function in an `E*` module via `use TestHelper.GenerateExampleTests, for: EMyModule`.
-- `EventBroker.TestHelper.TestMacro` overrides `assert`/`refute`/`assert_receive`/`refute_receive` so that under `MIX_ENV=debug` a failed assertion drops into `IEx.pry/0` instead of just failing — useful when debugging an example interactively.
+- Runnable examples live in `lib/examples/` as `Examples.E*` modules (e.g. `Examples.EEventBroker` in `lib/examples/e_event_broker.ex`). Each module starts with `use ExExample` + `import ExUnit.Assertions`. Behaviour-demonstrating functions are defined via the `example` macro (which permits parameters with `\\` defaults — `example check_self_sub(list \\ []) do …`); pure data builders and benchmarks stay as plain `def`s. Examples are real `@spec`'d functions you can call from IEx; they double as the interactive documentation for the system's behavior.
+- Test wrappers in `test/` are two-line modules: `use ExUnit.Case` + `use ExExample.ExUnit, for: Examples.E…`, which auto-generates one ExUnit test per `example` in the target module. To exercise a behavior, add or modify an example rather than writing assertions inline in a test.
+- `Examples.EEventBroker` carries `def rerun?(_), do: true` — its examples intentionally leave singleton-registry state mutated for the next example to observe, so ExExample's caching is disabled for that module. The other example modules use the default cache. The `EventbrokerTest.EventBroker` test wrapper runs `async: false` because `kill_subscriber` reads global registry state that concurrent test modules could pollute under `async: true`.
