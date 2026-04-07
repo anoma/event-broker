@@ -3,7 +3,7 @@ defmodule Examples.EEventBroker.Subscribe do
   I define examples on how to susbcribe to topics in the event broker.
   """
 
-  alias Examples.EEVentBroker.EFilter
+  alias Examples.EEventBroker.EFilter
   alias EventBroker.Event
 
   use ExUnit.Case

@@ -1,5 +1,5 @@
 defmodule EventbrokerTest.EventBroker do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Examples.EEventBroker
 
