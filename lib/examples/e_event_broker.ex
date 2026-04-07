@@ -18,8 +18,7 @@ defmodule Examples.EEventBroker do
   I assert that error was not encountered and return the value.
   """
 
-  @spec start_broker() ::
-          :already_started | :error | {:ok, %{broker: pid(), registry: pid()}}
+  @spec start_broker() :: :already_started | {:ok, pid()}
   def start_broker do
     on_start =
       with {:ok, sup_pid} <- Supervisor.start_link() do
