@@ -6,7 +6,14 @@ defmodule Examples.EEventBroker do
   alias EventBroker.Registry
   alias EventBroker.Supervisor
 
-  use ExUnit.Case
+  use ExExample
+  import ExUnit.Assertions
+
+  # Every example below mutates the singleton registry and intentionally
+  # leaves state visible to subsequent examples. Caching would return
+  # stale results, so disable it for this module.
+  @spec rerun?(any()) :: boolean()
+  def rerun?(_), do: true
 
   @doc """
   I start the broker-registry duo.
@@ -19,7 +26,7 @@ defmodule Examples.EEventBroker do
   """
 
   @spec start_broker() :: :already_started | {:ok, pid()}
-  def start_broker do
+  example start_broker do
     on_start =
       with {:ok, sup_pid} <- Supervisor.start_link() do
         {:ok, sup_pid}
@@ -93,7 +100,7 @@ defmodule Examples.EEventBroker do
   """
 
   @spec subscribe_and_check() :: {:received, Event.t()}
-  def subscribe_and_check do
+  example subscribe_and_check do
     EventBroker.subscribe_me([
       trivial_filter_spec(),
       this_module_filter_spec(),
@@ -177,7 +184,7 @@ defmodule Examples.EEventBroker do
   """
 
   @spec unsub_all() :: Registry.t()
-  def unsub_all() do
+  example unsub_all do
     start_broker()
 
     # unsubscribe from all my current subscriptions
@@ -203,7 +210,7 @@ defmodule Examples.EEventBroker do
 
   @spec check_self_sub(list()) :: {Registry.t(), pid()}
   @spec check_self_sub() :: {Registry.t(), pid()}
-  def check_self_sub(list \\ []) do
+  example check_self_sub(list \\ []) do
     unsub_all()
     assert :ok = EventBroker.subscribe_me(list)
 
@@ -229,7 +236,7 @@ defmodule Examples.EEventBroker do
 
   @spec check_sub_no_unsub(list()) :: {Registry.t(), pid()}
   @spec check_sub_no_unsub() :: {Registry.t(), pid()}
-  def check_sub_no_unsub(list \\ []) do
+  example check_sub_no_unsub(list \\ []) do
     start_broker()
     EventBroker.subscribe_me(list)
 
@@ -256,7 +263,7 @@ defmodule Examples.EEventBroker do
   @spec message_works_trivial(String.t()) ::
           {Registry.t(), list(), pid()}
   @spec message_works_trivial() :: {Registry.t(), list(), pid()}
-  def message_works_trivial(string \\ "subscribing works") do
+  example message_works_trivial(string \\ "subscribing works") do
     trivial = [trivial_filter_spec()]
     {_, trivial_agent} = check_self_sub(trivial)
 
@@ -282,7 +289,7 @@ defmodule Examples.EEventBroker do
 
   @spec un_subscribing_works_atomic(list()) :: Registry.t()
   @spec un_subscribing_works_atomic() :: Registry.t()
-  def un_subscribing_works_atomic(list \\ [trivial_filter_spec()]) do
+  example un_subscribing_works_atomic(list \\ [trivial_filter_spec()]) do
     {state, pid} = check_self_sub(list)
 
     EventBroker.unsubscribe_me(list)
@@ -308,7 +315,7 @@ defmodule Examples.EEventBroker do
           {Registry.t(), [Filters.SourceModule.t()], pid()}
   @spec message_gets_blocked() ::
           {Registry.t(), [Filters.SourceModule.t()], pid()}
-  def message_gets_blocked(string \\ "blocked message") do
+  example message_gets_blocked(string \\ "blocked message") do
     module_spec = [this_module_filter_spec()]
 
     {_, pid} = check_self_sub(module_spec)
@@ -338,10 +345,10 @@ defmodule Examples.EEventBroker do
           {Registry.t(), list(), pid()}
   @spec add_filter_on_top(list()) :: {Registry.t(), list(), pid()}
   @spec add_filter_on_top() :: {Registry.t(), list(), pid()}
-  def add_filter_on_top(
-        filter1 \\ [trivial_filter_spec()],
-        filter2 \\ [trivial_filter_spec()]
-      ) do
+  example add_filter_on_top(
+            filter1 \\ [trivial_filter_spec()],
+            filter2 \\ [trivial_filter_spec()]
+          ) do
     filter = filter1 ++ filter2
 
     {_, pid1} = check_self_sub(filter1)
@@ -377,7 +384,7 @@ defmodule Examples.EEventBroker do
 
   @spec complex_filter_message(String.t()) :: Registry.t()
   @spec complex_filter_message() :: Registry.t()
-  def complex_filter_message(string \\ "complex filter message") do
+  example complex_filter_message(string \\ "complex filter message") do
     trivial = [trivial_filter_spec()]
 
     add_filter_on_top(trivial, [
@@ -409,7 +416,7 @@ defmodule Examples.EEventBroker do
   """
 
   @spec non_filters_fail() :: true
-  def non_filters_fail() do
+  example non_filters_fail do
     unsub_all()
 
     assert "[Nock] do not export filtering functions" ==
@@ -426,7 +433,7 @@ defmodule Examples.EEventBroker do
   """
 
   @spec kill_subscriber() :: boolean()
-  def kill_subscriber do
+  example kill_subscriber do
     # self-prepare: ensure the registry is in the clean baseline state
     # this example asserts on. Without this prepend, the example only
     # passes if it happens to run first.
