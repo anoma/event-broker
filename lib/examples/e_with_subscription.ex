@@ -3,7 +3,7 @@ defmodule Examples.EEventBroker.WithSub do
   I contain examples of how the `with_subscription` block works.
   """
 
-  alias Examples.EEventBroker.EFilter
+  alias Examples.EEventBroker
   alias EventBroker.Event
 
   import Examples.EEventBroker.Subscribe
@@ -13,7 +13,7 @@ defmodule Examples.EEventBroker.WithSub do
   use EventBroker.WithSubscription
 
   # A list of default filters to use in the examples below.
-  @filters [%EFilter.AcceptAll{}, %EFilter.Error{}]
+  @filters [%EEventBroker.Filter.AcceptAll{}, %EEventBroker.Filter.Error{}]
 
   @doc """
   I run a piece of code with a subscription. I assert that the messages sent
@@ -21,7 +21,7 @@ defmodule Examples.EEventBroker.WithSub do
   """
   @spec with_subscription(struct()) :: struct()
   @spec with_subscription() :: struct()
-  example with_subscription(filter \\ %EFilter.AcceptAll{}) do
+  example with_subscription(filter \\ %EEventBroker.Filter.AcceptAll{}) do
     # make sure this process is not already subscribed
     refute_subscription(filter)
 
@@ -81,7 +81,9 @@ defmodule Examples.EEventBroker.WithSub do
   """
   @spec with_existing_subscription(struct()) :: struct()
   @spec with_existing_subscription() :: struct()
-  example with_existing_subscription(filter \\ %EFilter.AcceptAll{}) do
+  example with_existing_subscription(
+            filter \\ %EEventBroker.Filter.AcceptAll{}
+          ) do
     # subscribe to the given filter
     EventBroker.subscribe_me([filter])
 
