@@ -25,7 +25,7 @@ defmodule EventBroker.MixProject do
   def application do
     [
       mod: {EventBroker, []},
-      extra_applications: [:ex_unit, :mix]
+      extra_applications: [:ex_unit, :mix, :logger, :mnesia]
     ]
   end
 

@@ -38,6 +38,7 @@ defmodule EventBroker.Supervisor do
       |> Keyword.put_new(:dyn_sup_name, dyn_sup_name)
 
     children = [
+      {EventBroker.Log, []},
       {EventBroker.Broker, args},
       {EventBroker.Registry, new_args},
       {DynamicSupervisor,
