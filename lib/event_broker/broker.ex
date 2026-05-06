@@ -16,6 +16,7 @@ defmodule EventBroker.Broker do
 
     ### Fields
 
+    - `:name` - The name of the broker
     - `:subscribers` - The set of pids showcasing subscribers.
                        Default: Map.Set.new()
     """
@@ -60,12 +61,14 @@ defmodule EventBroker.Broker do
       :mnesia.transaction(fn ->
         broker_time = EventBroker.Log.broker_time(state.name)
         system_time = EventBroker.Log.system_time(state.name)
-        events = EventBroker.Log.events_since(broker_time, state.name)
+        events = EventBroker.Log.commands_since(broker_time, state.name, :event)
         EventBroker.Log.write_broker_time(state.name, system_time)
         events
       end)
 
-    for {_table_name, _system_time, _tx_id, event} <- events,
+    # Broke 'er? I hardly know 'er!
+    
+    for {_table_name, _system_time, _tx_id, :event, event} <- events,
         pid <- state.subscribers do
       send(pid, event)
     end

@@ -11,6 +11,7 @@ defmodule EventBroker do
   I have the following public functionality:
 
   - `event/1`
+  - `transaction/1`
   - `subscribe_me/1`
   - `unsubscribe_me/1`
   - `subscribe/2`
@@ -112,8 +113,8 @@ defmodule EventBroker do
   @spec transaction((-> any()), atom()) :: {:ok, any()} | {:error, any()}
   def transaction(fun, broker \\ EventBroker.Broker) do
     case :mnesia.transaction(fn ->
-           txn_id = EventBroker.Log.system_time(broker)
-           Process.put(:eb_tx_id, txn_id)
+           tx_id = EventBroker.Log.system_time(broker)
+           Process.put(:eb_tx_id, tx_id)
            fun.()
          end) do
       {:atomic, result} ->
@@ -135,11 +136,11 @@ defmodule EventBroker do
   @spec event(EventBroker.Event.t(), atom()) :: :ok
   def event(event = %EventBroker.Event{}, broker \\ EventBroker.Broker) do
     if :mnesia.is_transaction() do
-      EventBroker.Log.write_event(event, broker, Process.get(:eb_tx_id))
+      EventBroker.Log.write_command(broker, Process.get(:eb_tx_id), :event, event)
     else
       :mnesia.transaction(fn ->
-        txn_id = EventBroker.Log.system_time(broker)
-        EventBroker.Log.write_event(event, broker, txn_id)
+        tx_id = EventBroker.Log.system_time(broker)
+        EventBroker.Log.write_command(broker, tx_id, :event, event)
       end)
 
       GenServer.cast(broker, :wakeup)
