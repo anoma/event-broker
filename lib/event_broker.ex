@@ -110,15 +110,15 @@ defmodule EventBroker do
 
   I process events within an mnesia transaction and upon commit, trigger a fanout to all Broker subscribers
   """
-  @spec transaction((-> any()), atom()) :: {:ok, any()} | {:error, any()}
-  def transaction(fun, broker \\ EventBroker.Broker) do
+  @spec transaction((-> any())) :: {:ok, any()} | {:error, any()}
+  def transaction(fun) do
     case :mnesia.transaction(fn ->
-           tx_id = EventBroker.Log.system_time(broker)
+           tx_id = EventBroker.Log.system_time()
            Process.put(:eb_tx_id, tx_id)
            fun.()
          end) do
       {:atomic, result} ->
-        GenServer.cast(broker, :wakeup)
+        GenServer.cast(EventBroker.Broker, :wakeup)
         {:ok, result}
 
       {:aborted, reason} ->
@@ -133,17 +133,16 @@ defmodule EventBroker do
   using the `send/2` functionality. If I am wrapped inside an mnesia transaction, I will not trigger a fanout. 
   """
   @spec event(EventBroker.Event.t()) :: :ok
-  @spec event(EventBroker.Event.t(), atom()) :: :ok
-  def event(event = %EventBroker.Event{}, broker \\ EventBroker.Broker) do
+  def event(event = %EventBroker.Event{}) do
     if :mnesia.is_transaction() do
-      EventBroker.Log.write_command(broker, Process.get(:eb_tx_id), :event, event)
+      EventBroker.Log.write_command(Process.get(:eb_tx_id), :event, event)
     else
       :mnesia.transaction(fn ->
-        tx_id = EventBroker.Log.system_time(broker)
-        EventBroker.Log.write_command(broker, tx_id, :event, event)
+        tx_id = EventBroker.Log.system_time()
+        EventBroker.Log.write_command(tx_id, :event, event)
       end)
 
-      GenServer.cast(broker, :wakeup)
+      GenServer.cast(EventBroker.Broker, :wakeup)
     end
   end
 
@@ -179,9 +178,11 @@ defmodule EventBroker do
   """
 
   @spec subscribe(pid(), filter_spec_list) :: :ok | String.t()
-  @spec subscribe(pid(), filter_spec_list, atom()) :: :ok | String.t()
-  def subscribe(pid, filter_spec_list, registry \\ EventBroker.Registry) do
-    GenServer.call(registry, {:subscribe, pid, filter_spec_list})
+  def subscribe(pid, filter_spec_list) do
+    # TODO change use of pids in registry to forcing use of an id that maps to the pid
+    # Now instead of events going to the pid it goes to an id
+    # :mnesia.transaction(fn -> EventBroker.Log.write_subscribe(pid, filter_spec_list) end)
+    GenServer.call(EventBroker.Registry, {:subscribe, pid, filter_spec_list})
   end
 
   @doc """
@@ -191,9 +192,8 @@ defmodule EventBroker do
   """
 
   @spec subscribe_me(filter_spec_list) :: :ok | String.t()
-  @spec subscribe_me(filter_spec_list, atom()) :: :ok | String.t()
-  def subscribe_me(filter_spec_list, registry \\ EventBroker.Registry) do
-    subscribe(self(), filter_spec_list, registry)
+  def subscribe_me(filter_spec_list) do
+    subscribe(self(), filter_spec_list)
   end
 
   @doc """
@@ -212,9 +212,9 @@ defmodule EventBroker do
   all agents which have shut down from my registry map and return `:ok`
   """
 
-  @spec unsubscribe(pid(), filter_spec_list, atom()) :: :ok
-  def unsubscribe(pid, filter_spec_list, registry \\ EventBroker.Registry) do
-    GenServer.call(registry, {:unsubscribe, pid, filter_spec_list})
+  @spec unsubscribe(pid(), filter_spec_list) :: :ok
+  def unsubscribe(pid, filter_spec_list) do
+    GenServer.call(EventBroker.Registry, {:unsubscribe, pid, filter_spec_list})
   end
 
   @doc """
@@ -224,8 +224,7 @@ defmodule EventBroker do
   """
 
   @spec unsubscribe_me(filter_spec_list) :: :ok
-  @spec unsubscribe_me(filter_spec_list, atom()) :: :ok
-  def unsubscribe_me(filter_spec_list, registry \\ EventBroker.Registry) do
-    unsubscribe(self(), filter_spec_list, registry)
+  def unsubscribe_me(filter_spec_list) do
+    unsubscribe(self(), filter_spec_list)
   end
 end

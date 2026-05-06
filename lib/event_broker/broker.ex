@@ -16,25 +16,21 @@ defmodule EventBroker.Broker do
 
     ### Fields
 
-    - `:name` - The name of the broker
     - `:subscribers` - The set of pids showcasing subscribers.
                        Default: Map.Set.new()
     """
 
-    field(:name, atom(), enforce: true)
     field(:subscribers, MapSet.t(pid()), default: MapSet.new())
   end
 
   @spec start_link(list()) :: GenServer.on_start()
-  def start_link(args \\ []) do
-    name = args[:broker_name] || __MODULE__
-    GenServer.start_link(__MODULE__, name, name: name)
+  def start_link(_args \\ []) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
   @impl true
-  def init(name) do
-    EventBroker.Log.register_broker(name)
-    {:ok, %EventBroker.Broker{name: name}}
+  def init(_args) do
+    {:ok, %EventBroker.Broker{}}
   end
 
   ############################################################
@@ -59,10 +55,10 @@ defmodule EventBroker.Broker do
   def handle_cast(:wakeup, state) do
     {:atomic, events} =
       :mnesia.transaction(fn ->
-        broker_time = EventBroker.Log.broker_time(state.name)
-        system_time = EventBroker.Log.system_time(state.name)
-        events = EventBroker.Log.commands_since(broker_time, state.name, :event)
-        EventBroker.Log.write_broker_time(state.name, system_time)
+        broker_time = EventBroker.Log.broker_time()
+        system_time = EventBroker.Log.system_time()
+        events = EventBroker.Log.commands_since(broker_time, :event)
+        EventBroker.Log.write_broker_time(system_time)
         events
       end)
 

@@ -57,6 +57,8 @@ defmodule EventBroker.Registry do
     Default: %{}
     """
 
+    # TODO registered_subscriber_ids?
+    
     field(:supervisor, atom())
     field(:registered_filters, registered_filters, default: %{})
     field(:registered_subscribers, registered_subscribers, default: %{})
@@ -69,14 +71,7 @@ defmodule EventBroker.Registry do
 
   @impl true
   def init(args) do
-    broker = args[:broker_name]
-
-    pid =
-      if is_pid(broker) do
-        broker
-      else
-        Process.whereis(broker)
-      end
+    pid = Process.whereis(EventBroker.Broker)
 
     {:ok,
      %Registry{
@@ -232,7 +227,7 @@ defmodule EventBroker.Registry do
       |> hd()
 
     remaining_to_spawn = filter_spec_list -- existing_prefix
-
+              
     # ["a", "b"] -> ["a", "b", "c", "d"]
     # {["a", "b"], state} iterating over "c"
     # {["a", "b", "c"], state + ["a", "b", "c"] iterating over "d"
@@ -241,7 +236,7 @@ defmodule EventBroker.Registry do
       {parent_spec_list, old_state} ->
         parent_pid = Map.get(old_state, parent_spec_list)
         new_spec_list = parent_spec_list ++ [f]
-
+        
         {:ok, new_pid} =
           DynamicSupervisor.start_child(
             supervisor,

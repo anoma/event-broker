@@ -141,7 +141,7 @@ defmodule Examples.EEventBroker do
 
     {:atomic, t1} =
       :mnesia.transaction(fn ->
-        EventBroker.Log.broker_time(EventBroker.Broker)
+        EventBroker.Log.broker_time()
       end)
 
     EventBroker.transaction(fn ->
@@ -160,16 +160,16 @@ defmodule Examples.EEventBroker do
 
     {:atomic, t2} =
       :mnesia.transaction(fn ->
-        EventBroker.Log.broker_time(EventBroker.Broker)
+        EventBroker.Log.broker_time()
       end)
 
     assert t2 == t1 + 2
 
-    EventBroker.unsubscribe_me([
-      trivial_filter_spec(),
-      this_module_filter_spec(),
-      trivial_filter_spec()
-    ])
+    # EventBroker.unsubscribe_me([
+    #   trivial_filter_spec(),
+    #   this_module_filter_spec(),
+    #   trivial_filter_spec()
+    # ])
 
     {:received, event}
   end
