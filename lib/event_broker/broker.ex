@@ -63,7 +63,7 @@ defmodule EventBroker.Broker do
       end)
 
     # Broke 'er? I hardly know 'er!
-    
+
     for {_table_name, _system_time, _tx_id, :event, event} <- events,
         pid <- state.subscribers do
       send(pid, event)

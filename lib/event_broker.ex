@@ -82,6 +82,7 @@ defmodule EventBroker do
   """
 
   @type filter_spec_list :: list(struct())
+  @type id :: pid() | atom() | filter_spec_list
 
   ############################################################
   #                      Public RPC API                      #
@@ -97,12 +98,12 @@ defmodule EventBroker do
   end
 
   @doc """
-  I return the filter specs for the given process id.
+  I return the filter specs for the given subscriber id.
   I return a list of filterspeclists.
   """
-  @spec subscriptions(pid()) :: [filter_spec_list]
-  def subscriptions(pid) do
-    GenServer.call(EventBroker.Registry, {:subscriptions, pid})
+  @spec subscriptions(id()) :: [filter_spec_list]
+  def subscriptions(id) do
+    GenServer.call(EventBroker.Registry, {:subscriptions, id})
   end
 
   @doc """
@@ -177,12 +178,12 @@ defmodule EventBroker do
   Filter Agent spawning is handled via DynamicSupervisor.
   """
 
-  @spec subscribe(pid(), filter_spec_list) :: :ok | String.t()
-  def subscribe(pid, filter_spec_list) do
-    # TODO change use of pids in registry to forcing use of an id that maps to the pid
-    # Now instead of events going to the pid it goes to an id
-    # :mnesia.transaction(fn -> EventBroker.Log.write_subscribe(pid, filter_spec_list) end)
-    GenServer.call(EventBroker.Registry, {:subscribe, pid, filter_spec_list})
+  @spec subscribe(pid(), filter_spec_list, atom()) :: :ok | String.t()
+  def subscribe(pid, filter_spec_list, id_subscriber) do
+    GenServer.call(
+      EventBroker.Registry,
+      {:subscribe, pid, filter_spec_list, id_subscriber}
+    )
   end
 
   @doc """
@@ -191,9 +192,9 @@ defmodule EventBroker do
   I call `subscribe/2` where the first argument is `self()`
   """
 
-  @spec subscribe_me(filter_spec_list) :: :ok | String.t()
-  def subscribe_me(filter_spec_list) do
-    subscribe(self(), filter_spec_list)
+  @spec subscribe_me(filter_spec_list, id()) :: :ok | String.t()
+  def subscribe_me(filter_spec_list, id_subscriber \\ self()) do
+    subscribe(self(), filter_spec_list, id_subscriber)
   end
 
   @doc """
@@ -212,9 +213,12 @@ defmodule EventBroker do
   all agents which have shut down from my registry map and return `:ok`
   """
 
-  @spec unsubscribe(pid(), filter_spec_list) :: :ok
-  def unsubscribe(pid, filter_spec_list) do
-    GenServer.call(EventBroker.Registry, {:unsubscribe, pid, filter_spec_list})
+  @spec unsubscribe(pid(), filter_spec_list, id()) :: :ok
+  def unsubscribe(pid, filter_spec_list, id_subscriber) do
+    GenServer.call(
+      EventBroker.Registry,
+      {:unsubscribe, pid, filter_spec_list, id_subscriber}
+    )
   end
 
   @doc """
@@ -223,8 +227,8 @@ defmodule EventBroker do
   I call `unsubscribe/2` where the first argument is `self()`
   """
 
-  @spec unsubscribe_me(filter_spec_list) :: :ok
-  def unsubscribe_me(filter_spec_list) do
-    unsubscribe(self(), filter_spec_list)
+  @spec unsubscribe_me(filter_spec_list, id()) :: :ok
+  def unsubscribe_me(filter_spec_list, id_subscriber \\ self()) do
+    unsubscribe(self(), filter_spec_list, id_subscriber)
   end
 end

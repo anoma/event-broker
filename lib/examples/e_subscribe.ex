@@ -126,7 +126,8 @@ defmodule Examples.EEventBroker.Subscribe do
     assert_receive :done
 
     # check that the process has been subscribed
-    assert [[filter]] == EventBroker.subscriptions(subscriber)
+    assert [[filter]] ==
+             EventBroker.subscriptions(subscriber)
 
     # stop the subscriber
     send(subscriber, :terminate)
