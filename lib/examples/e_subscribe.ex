@@ -33,7 +33,8 @@ defmodule Examples.EEventBroker.Subscribe do
            end)
 
     registry = :sys.get_state(EventBroker.Registry)
-    assert registry.registered_pids[:sub_id] == self()
+    mailbox_pid = registry.registered_pids[:sub_id]
+    assert is_pid(mailbox_pid) and Process.alive?(mailbox_pid)
     assert Map.has_key?(registry.registered_pids, [filter])
     assert [[filter]] == registry.registered_filter_specs[:sub_id]
 
@@ -159,6 +160,61 @@ defmodule Examples.EEventBroker.Subscribe do
 
     # assert that its no longer subscribed
     assert [] == EventBroker.subscriptions(subscriber)
+  end
+
+  @doc """
+  I demonstrate that a durable subscriber survives going offline.
+
+  I subscribe a process under the atom ID `:reconnect_id`, then kill it.
+  Events sent while the subscriber is offline are buffered by the mailbox.
+  When the same atom ID subscribes again from a new process, the mailbox
+  drains the buffered events to it.
+  """
+  @spec mailbox_reconnect() :: {:received, [Event.t()]}
+  example mailbox_reconnect do
+    filter = %EFilter.AcceptAll{}
+    this = self()
+
+    # First subscriber — subscribes under a durable atom ID then waits.
+    first =
+      spawn(fn ->
+        EventBroker.subscribe_me([filter], :reconnect_id)
+        send(this, :subscribed)
+
+        receive do
+          :terminate -> :ok
+        end
+      end)
+
+    assert_receive :subscribed
+
+    mailbox_pid =
+      :sys.get_state(EventBroker.Registry).registered_pids[:reconnect_id]
+
+    # Kill the first subscriber.
+    Process.monitor(first)
+    send(first, :terminate)
+    assert_receive {:DOWN, _, _, ^first, _}
+
+    # Sync with the mailbox so we know it has processed the :DOWN and
+    # transitioned to :buffering before we send events.
+    assert {:buffering, _} = :sys.get_state(mailbox_pid)
+
+    e1 = %Event{source_module: nil, body: 1}
+    e2 = %Event{source_module: nil, body: 2}
+    EventBroker.event(e1)
+    EventBroker.event(e2)
+
+    # Reconnect: calling subscribe_me with the same atom ID connects self()
+    # to the existing mailbox, which drains the buffered events to us.
+    EventBroker.subscribe_me([filter], :reconnect_id)
+
+    assert_receive ^e1
+    assert_receive ^e2
+
+    EventBroker.unsubscribe_me([filter], :reconnect_id)
+
+    {:received, [e1, e2]}
   end
 
   ############################################################

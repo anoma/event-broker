@@ -18,12 +18,16 @@ defmodule EventBroker.Registry do
   existing filter agent, these are not spawned. The existing filter agents will
   be used instead.
 
-  ## Registered Filters
+  ## Durable Subscribers
 
-  When a process subscribes to a filter spec list,
+  Atom-ID subscribers are backed by a `Mailbox` process. The mailbox buffers
+  events when the subscriber is offline and drains them on reconnect. The
+  registry stores the mailbox pid under the atom ID key, and monitors the
+  mailbox (not the subscriber pid — the mailbox does that itself).
   """
 
   alias __MODULE__
+  alias EventBroker.Mailbox
 
   use GenServer
   use TypedStruct
@@ -51,7 +55,9 @@ defmodule EventBroker.Registry do
 
     - `:supervisor` - The name of the dynamic supervisor launched on start.
     - `:registered_filter_specs` - The map whose keys are a ID mapped onto their filter specs.
-    - `:registered_pids` - The map whos keps are a subscriber ID mapped onto the PID
+    - `:registered_pids` - The map whose keys are a subscriber ID mapped onto
+      the PID. For atom IDs, this is the mailbox pid; for filter spec lists,
+      this is the filter agent pid; for pid IDs, this is the subscriber pid.
     Default: %{}
     """
 
@@ -82,8 +88,16 @@ defmodule EventBroker.Registry do
   @impl true
   def handle_call({:subscribe, id, filter_spec_list}, _from, state) do
     case do_subscribe(id, filter_spec_list, state) do
-      {:ok, new_state} -> {:reply, :ok, new_state}
-      {:error, msg} -> {:reply, msg, state}
+      {:ok, new_state} ->
+        new_state =
+          if is_pid(id),
+            do: new_state,
+            else: ensure_mailbox(id, filter_spec_list, new_state)
+
+        {:reply, :ok, new_state}
+
+      {:error, msg} ->
+        {:reply, msg, state}
     end
   end
 
@@ -91,18 +105,26 @@ defmodule EventBroker.Registry do
     case do_subscribe(id, filter_spec_list, state) do
       {:ok, new_state} ->
         new_state =
-          Map.put(
-            new_state,
-            :registered_pids,
-            Map.put(new_state.registered_pids, id, pid)
-          )
+          if is_pid(id) do
+            new_state = %{
+              new_state
+              | registered_pids: Map.put(new_state.registered_pids, id, pid)
+            }
 
-        Process.monitor(pid)
+            Process.monitor(pid)
 
-        GenServer.call(
-          Map.get(new_state.registered_pids, filter_spec_list),
-          {:subscribe, pid}
-        )
+            GenServer.call(
+              Map.get(new_state.registered_pids, filter_spec_list),
+              {:subscribe, pid}
+            )
+
+            new_state
+          else
+            new_state = ensure_mailbox(id, filter_spec_list, new_state)
+            mailbox_pid = Map.get(new_state.registered_pids, id)
+            Mailbox.connect(mailbox_pid, pid)
+            new_state
+          end
 
         {:reply, :ok, new_state}
 
@@ -112,8 +134,14 @@ defmodule EventBroker.Registry do
   end
 
   def handle_call({:unsubscribe, id, filter_spec_list}, _from, state) do
+    mailbox_pid = Map.get(state.registered_pids, id)
+
     new_registered_pids =
-      do_unsubscribe(nil, filter_spec_list, state.registered_pids)
+      if mailbox_pid do
+        do_unsubscribe(mailbox_pid, filter_spec_list, state.registered_pids)
+      else
+        state.registered_pids
+      end
 
     remaining =
       state.registered_filter_specs
@@ -122,9 +150,13 @@ defmodule EventBroker.Registry do
 
     state =
       if remaining == [] do
+        if mailbox_pid do
+          DynamicSupervisor.terminate_child(state.supervisor, mailbox_pid)
+        end
+
         %{
           state
-          | registered_pids: new_registered_pids,
+          | registered_pids: Map.delete(new_registered_pids, id),
             registered_filter_specs:
               Map.delete(state.registered_filter_specs, id)
         }
@@ -146,7 +178,20 @@ defmodule EventBroker.Registry do
         state
       ) do
     new_registered_pids =
-      do_unsubscribe(pid, filter_spec_list, state.registered_pids)
+      if is_pid(id_subscriber) do
+        do_unsubscribe(pid, filter_spec_list, state.registered_pids)
+      else
+        mailbox_pid = Map.get(state.registered_pids, id_subscriber)
+
+        if mailbox_pid,
+          do:
+            do_unsubscribe(
+              mailbox_pid,
+              filter_spec_list,
+              state.registered_pids
+            ),
+          else: state.registered_pids
+      end
 
     remaining =
       state.registered_filter_specs
@@ -155,6 +200,14 @@ defmodule EventBroker.Registry do
 
     state =
       if remaining == [] do
+        if not is_pid(id_subscriber) do
+          mailbox_pid = Map.get(state.registered_pids, id_subscriber)
+
+          if mailbox_pid do
+            DynamicSupervisor.terminate_child(state.supervisor, mailbox_pid)
+          end
+        end
+
         %{
           state
           | registered_pids: Map.delete(new_registered_pids, id_subscriber),
@@ -209,9 +262,25 @@ defmodule EventBroker.Registry do
 
         {:noreply, state}
 
-      {id, _} ->
+      {id, mailbox_pid} ->
+        # mailbox died — clean up its filter agent subscriptions
+        filter_spec_list_list = Map.get(state.registered_filter_specs, id, [])
+
         state =
-          Map.update!(state, :registered_pids, &Map.delete(&1, id))
+          Enum.reduce(filter_spec_list_list, state, fn filter_spec_list,
+                                                       state ->
+            %{
+              state
+              | registered_pids:
+                  do_unsubscribe(
+                    mailbox_pid,
+                    filter_spec_list,
+                    state.registered_pids
+                  )
+            }
+          end)
+          |> Map.update!(:registered_pids, &Map.delete(&1, id))
+          |> Map.update!(:registered_filter_specs, &Map.delete(&1, id))
 
         {:noreply, state}
     end
@@ -220,6 +289,31 @@ defmodule EventBroker.Registry do
   ############################################################
   #                          Helpers                         #
   ############################################################
+
+  @spec ensure_mailbox(atom(), EventBroker.filter_spec_list(), t()) :: t()
+  defp ensure_mailbox(id, filter_spec_list, state) do
+    {mailbox_pid, state} =
+      case Map.get(state.registered_pids, id) do
+        nil ->
+          {:ok, pid} =
+            DynamicSupervisor.start_child(
+              state.supervisor,
+              {Mailbox, {id, filter_spec_list}}
+            )
+
+          Process.monitor(pid)
+
+          {pid,
+           %{state | registered_pids: Map.put(state.registered_pids, id, pid)}}
+
+        pid ->
+          {pid, state}
+      end
+
+    filter_agent_pid = Map.get(state.registered_pids, filter_spec_list)
+    GenServer.call(filter_agent_pid, {:subscribe, mailbox_pid})
+    state
+  end
 
   @spec do_subscribe(EventBroker.id(), EventBroker.filter_spec_list(), t()) ::
           {:ok, t()} | {:error, String.t()}
@@ -288,10 +382,6 @@ defmodule EventBroker.Registry do
 
     remaining_to_spawn = filter_spec_list -- existing_prefix
 
-    # ["a", "b"] -> ["a", "b", "c", "d"]
-    # {["a", "b"], state} iterating over "c"
-    # {["a", "b", "c"], state + ["a", "b", "c"] iterating over "d"
-
     for f <- remaining_to_spawn, reduce: {existing_prefix, registered} do
       {parent_spec_list, old_state} ->
         parent_pid = Map.get(old_state, parent_spec_list)
@@ -310,7 +400,7 @@ defmodule EventBroker.Registry do
   end
 
   @spec do_unsubscribe(
-          pid(),
+          pid() | nil,
           EventBroker.filter_spec_list(),
           registered_pids()
         ) ::
