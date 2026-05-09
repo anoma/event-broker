@@ -134,4 +134,33 @@ defmodule EventBroker.Log do
   def write_broker_time(i) do
     :mnesia.write({:meta, :broker_time, i})
   end
+
+  @doc """
+  I replay all commands in the log in order, dispatching each to the
+  registry. Subscribe and unsubscribe commands reconstruct the filter agent
+  tree and subscription state. Events are skipped — the broker's fanout
+  cursor handles those separately.
+  """
+  @spec replay(atom()) :: :ok
+  def replay(registry \\ EventBroker.Registry) do
+    {:atomic, commands} =
+      :mnesia.transaction(fn -> commands_since(0) end)
+
+    for {:command, _, _, command, body} <- commands do
+      case command do
+        :subscribe ->
+          {id, filter_spec_list} = body
+          GenServer.call(registry, {:subscribe, id, filter_spec_list})
+
+        :unsubscribe ->
+          {id, filter_spec_list} = body
+          GenServer.call(registry, {:unsubscribe, id, filter_spec_list})
+
+        _ ->
+          :ok
+      end
+    end
+
+    :ok
+  end
 end

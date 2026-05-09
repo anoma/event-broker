@@ -14,24 +14,46 @@ defmodule Examples.EEventBroker.Subscribe do
 
   @doc """
   I subscribe using the `Trivial` filter and assert that I receive any events
-  sent on the message broker.
+  sent on the message broker. I also verify that subscribe and unsubscribe
+  commands are written to the command log.
   """
   @spec subscribe_to_filter(struct()) :: {:received, any()}
   @spec subscribe_to_filter() :: {:received, any()}
   example subscribe_to_filter(filter \\ %EFilter.AcceptAll{}) do
-    # subscribe to the trivial filter (i.e., all messages)
-    EventBroker.subscribe_me([filter])
+    {:atomic, t} =
+      :mnesia.transaction(fn -> EventBroker.Log.system_time() end)
 
-    # create an event that matches the filter
+    EventBroker.subscribe_me([filter], :sub_id)
+
+    {:atomic, commands} =
+      :mnesia.transaction(fn -> EventBroker.Log.commands_since(t) end)
+
+    assert Enum.any?(commands, fn {:command, _, _, cmd, body} ->
+             cmd == :subscribe and body == {:sub_id, [filter]}
+           end)
+
+    registry = :sys.get_state(EventBroker.Registry)
+    assert registry.registered_pids[:sub_id] == self()
+    assert Map.has_key?(registry.registered_pids, [filter])
+    assert [[filter]] == registry.registered_filter_specs[:sub_id]
+
     event = %Event{source_module: nil, body: %{message: "everything matches"}}
 
-    # send the event
     EventBroker.event(event)
-
-    # assert that this process receives the event
     assert_receive ^event
 
-    EventBroker.unsubscribe_me([filter])
+    EventBroker.unsubscribe_me([filter], :sub_id)
+
+    {:atomic, commands} =
+      :mnesia.transaction(fn -> EventBroker.Log.commands_since(t) end)
+
+    assert Enum.any?(commands, fn {:command, _, _, cmd, body} ->
+             cmd == :unsubscribe and body == {:sub_id, [filter]}
+           end)
+
+    registry = :sys.get_state(EventBroker.Registry)
+    refute Map.has_key?(registry.registered_pids, :sub_id)
+    assert registry.registered_filter_specs[:sub_id] == nil
 
     {:received, event}
   end

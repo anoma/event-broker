@@ -80,97 +80,95 @@ defmodule EventBroker.Registry do
   ############################################################
 
   @impl true
-  def handle_call(
-        {:subscribe, pid, filter_spec_list, id_subscriber},
-        _from,
-        state
-      ) do
-    # a filter is valid if it a module that exports a `&filter/2` function.
-    invalid_filters =
-      filter_spec_list
-      |> Enum.flat_map(fn spec ->
-        struct = spec.__struct__
-
-        Code.ensure_loaded(struct)
-
-        if Kernel.function_exported?(struct, :filter, 2) do
-          []
-        else
-          [struct]
-        end
-      end)
-
-    if Enum.empty?(invalid_filters) do
-      # create a new filter agent for all non-existing filter specs. e.g., if
-      # the filter spec list is [a b c], create an agent for a, b, and c. if a,
-      # b already existed, only create c.
-      new_state =
-        if Map.has_key?(state.registered_pids, filter_spec_list) do
-          state
-        else
-          {_, new_registered_pids} =
-            iterate_sub(
-              state.registered_pids,
-              filter_spec_list,
-              state.supervisor
-            )
-
-          %{state | registered_pids: new_registered_pids}
-        end
-
-      # keep a mapping between subscribing ids and which filterlists they subscribed to
-      # this is used to unsubscribe them when they go down.
-      registered_filter_specs =
-        Map.update(
-          new_state.registered_filter_specs,
-          id_subscriber,
-          [filter_spec_list],
-          &[filter_spec_list | &1]
-        )
-
-      registered_pids = Map.put(new_state.registered_pids, id_subscriber, pid)
-
-      new_state =
-        new_state
-        |> Map.put(:registered_filter_specs, registered_filter_specs)
-        |> Map.put(:registered_pids, registered_pids)
-
-      # monitor the subscribing process to get notified when it goes down.
-      Process.monitor(pid)
-
-      # subscribe the subscribing process to messages of the last filter in the
-      # filter spec list its filter agent.
-      GenServer.call(
-        Map.get(new_state.registered_pids, filter_spec_list),
-        {:subscribe, pid}
-      )
-
-      {:reply, :ok, new_state}
-    else
-      # if there was an invalid filter in the filter spec list, the subscription cannot be made.
-      {:reply,
-       "#{inspect(invalid_filters)} do not export filtering functions", state}
+  def handle_call({:subscribe, id, filter_spec_list}, _from, state) do
+    case do_subscribe(id, filter_spec_list, state) do
+      {:ok, new_state} -> {:reply, :ok, new_state}
+      {:error, msg} -> {:reply, msg, state}
     end
   end
 
+  def handle_call({:subscribe_pid, pid, id, filter_spec_list}, _from, state) do
+    case do_subscribe(id, filter_spec_list, state) do
+      {:ok, new_state} ->
+        new_state =
+          Map.put(
+            new_state,
+            :registered_pids,
+            Map.put(new_state.registered_pids, id, pid)
+          )
+
+        Process.monitor(pid)
+
+        GenServer.call(
+          Map.get(new_state.registered_pids, filter_spec_list),
+          {:subscribe, pid}
+        )
+
+        {:reply, :ok, new_state}
+
+      {:error, msg} ->
+        {:reply, msg, state}
+    end
+  end
+
+  def handle_call({:unsubscribe, id, filter_spec_list}, _from, state) do
+    new_registered_pids =
+      do_unsubscribe(nil, filter_spec_list, state.registered_pids)
+
+    remaining =
+      state.registered_filter_specs
+      |> Map.get(id, [])
+      |> Enum.reject(&(&1 == filter_spec_list))
+
+    state =
+      if remaining == [] do
+        %{
+          state
+          | registered_pids: new_registered_pids,
+            registered_filter_specs:
+              Map.delete(state.registered_filter_specs, id)
+        }
+      else
+        %{
+          state
+          | registered_pids: new_registered_pids,
+            registered_filter_specs:
+              Map.put(state.registered_filter_specs, id, remaining)
+        }
+      end
+
+    {:reply, :ok, state}
+  end
+
   def handle_call(
-        {:unsubscribe, pid, filter_spec_list, id_subscriber},
+        {:unsubscribe_pid, pid, id_subscriber, filter_spec_list},
         _from,
         state
       ) do
     new_registered_pids =
       do_unsubscribe(pid, filter_spec_list, state.registered_pids)
 
+    remaining =
+      state.registered_filter_specs
+      |> Map.get(id_subscriber, [])
+      |> Enum.reject(&(&1 == filter_spec_list))
+
     state =
-      state
-      |> Map.put(:registered_pids, new_registered_pids)
-      |> Map.update!(:registered_filter_specs, fn ss ->
-        Map.update!(
-          ss,
-          id_subscriber,
-          &Enum.reject(&1, fn f -> f == filter_spec_list end)
-        )
-      end)
+      if remaining == [] do
+        %{
+          state
+          | registered_pids: Map.delete(new_registered_pids, id_subscriber),
+            registered_filter_specs:
+              Map.delete(state.registered_filter_specs, id_subscriber)
+        }
+      else
+        %{
+          state
+          | registered_pids: new_registered_pids,
+            registered_filter_specs:
+              Map.put(state.registered_filter_specs, id_subscriber, remaining)
+        }
+      end
 
     {:reply, :ok, state}
   end
@@ -194,28 +192,26 @@ defmodule EventBroker.Registry do
       nil ->
         {:noreply, state}
 
-      {id, _} ->
+      {id, _} when is_pid(id) ->
         filter_spec_list_list = Map.get(state.registered_filter_specs, id, [])
 
         state =
-          Enum.reduce(
-            filter_spec_list_list,
-            state,
-            fn filter_spec_list, state ->
-              new_registered_pids =
-                do_unsubscribe(pid, filter_spec_list, state.registered_pids)
-
-              %{state | registered_pids: new_registered_pids}
-            end
-          )
+          Enum.reduce(filter_spec_list_list, state, fn filter_spec_list,
+                                                       state ->
+            %{
+              state
+              | registered_pids:
+                  do_unsubscribe(pid, filter_spec_list, state.registered_pids)
+            }
+          end)
           |> Map.update!(:registered_pids, &Map.delete(&1, id))
+          |> Map.update!(:registered_filter_specs, &Map.delete(&1, id))
 
+        {:noreply, state}
+
+      {id, _} ->
         state =
-          if is_pid(id) do
-            Map.update!(state, :registered_filter_specs, &Map.delete(&1, id))
-          else
-            state
-          end
+          Map.update!(state, :registered_pids, &Map.delete(&1, id))
 
         {:noreply, state}
     end
@@ -224,6 +220,55 @@ defmodule EventBroker.Registry do
   ############################################################
   #                          Helpers                         #
   ############################################################
+
+  @spec do_subscribe(EventBroker.id(), EventBroker.filter_spec_list(), t()) ::
+          {:ok, t()} | {:error, String.t()}
+  defp do_subscribe(id, filter_spec_list, state) do
+    invalid_filters =
+      filter_spec_list
+      |> Enum.flat_map(fn spec ->
+        struct = spec.__struct__
+        Code.ensure_loaded(struct)
+
+        if Kernel.function_exported?(struct, :filter, 2),
+          do: [],
+          else: [struct]
+      end)
+
+    if Enum.empty?(invalid_filters) do
+      new_state =
+        if Map.has_key?(state.registered_pids, filter_spec_list) do
+          state
+        else
+          {_, new_registered_pids} =
+            iterate_sub(
+              state.registered_pids,
+              filter_spec_list,
+              state.supervisor
+            )
+
+          %{state | registered_pids: new_registered_pids}
+        end
+
+      registered_filter_specs =
+        Map.update(
+          new_state.registered_filter_specs,
+          id,
+          [filter_spec_list],
+          fn existing ->
+            if filter_spec_list in existing,
+              do: existing,
+              else: [filter_spec_list | existing]
+          end
+        )
+
+      {:ok,
+       Map.put(new_state, :registered_filter_specs, registered_filter_specs)}
+    else
+      {:error,
+       "#{inspect(invalid_filters)} do not export filtering functions"}
+    end
+  end
 
   @spec iterate_sub(
           registered_pids(),

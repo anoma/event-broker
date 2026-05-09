@@ -72,7 +72,9 @@ defmodule EventBroker do
 
   @impl true
   def start(_type, args \\ []) do
-    EventBroker.Supervisor.start_link(args)
+    {:ok, pid} = EventBroker.Supervisor.start_link(args)
+    EventBroker.Log.replay()
+    {:ok, pid}
   end
 
   @typedoc """
@@ -178,11 +180,23 @@ defmodule EventBroker do
   Filter Agent spawning is handled via DynamicSupervisor.
   """
 
-  @spec subscribe(pid(), filter_spec_list, atom()) :: :ok | String.t()
+  @spec subscribe(pid(), filter_spec_list(), id()) :: :ok | String.t()
   def subscribe(pid, filter_spec_list, id_subscriber) do
+    unless is_pid(id_subscriber) do
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time()
+
+        EventBroker.Log.write_command(
+          tx_id,
+          :subscribe,
+          {id_subscriber, filter_spec_list}
+        )
+      end)
+    end
+
     GenServer.call(
       EventBroker.Registry,
-      {:subscribe, pid, filter_spec_list, id_subscriber}
+      {:subscribe_pid, pid, id_subscriber, filter_spec_list}
     )
   end
 
@@ -213,11 +227,23 @@ defmodule EventBroker do
   all agents which have shut down from my registry map and return `:ok`
   """
 
-  @spec unsubscribe(pid(), filter_spec_list, id()) :: :ok
+  @spec unsubscribe(pid(), filter_spec_list(), id()) :: :ok
   def unsubscribe(pid, filter_spec_list, id_subscriber) do
+    unless is_pid(id_subscriber) do
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time()
+
+        EventBroker.Log.write_command(
+          tx_id,
+          :unsubscribe,
+          {id_subscriber, filter_spec_list}
+        )
+      end)
+    end
+
     GenServer.call(
       EventBroker.Registry,
-      {:unsubscribe, pid, filter_spec_list, id_subscriber}
+      {:unsubscribe_pid, pid, id_subscriber, filter_spec_list}
     )
   end
 
