@@ -79,23 +79,31 @@ defmodule EventBroker do
     {:ok, pid}
   end
 
-  @typedoc """
-  I am a filter dependency specification, I am a list of filter specs listed
-  in the order in which the filter agents implementing said specs should be
-  subscribed to one another.
-  """
-
   @type filter_spec_list :: list(struct())
   @type id :: pid() | atom() | filter_spec_list
 
   ############################################################
   #                      Public RPC API                      #
-  ############################################################
-
+  ############################################################  
   @doc """
-  I return the filter specs for the current process.
-  I return a list of filterspeclists.
+  I add a middleware function to the filter agent for the given filter spec list.
+
+  The function receives an event and returns `{:ok, event}` to continue
+  the chain or `:drop` to stop it.
   """
+  @spec add_middleware(
+          filter_spec_list(),
+          (EventBroker.Event.t() -> {:ok, EventBroker.Event.t()} | :drop),
+          atom()
+        ) :: :ok | {:error, :not_found}
+  def add_middleware(
+        filter_spec_list,
+        fun,
+        registry \\ EventBroker.Registry
+      ) do
+    GenServer.call(registry, {:add_middleware, filter_spec_list, fun})
+  end
+
   @spec my_subscriptions() :: [filter_spec_list]
   def my_subscriptions() do
     subscriptions(self())
@@ -103,7 +111,6 @@ defmodule EventBroker do
 
   @doc """
   I return the filter specs for the given subscriber id.
-  I return a list of filterspeclists.
   """
   @spec subscriptions(id()) :: [filter_spec_list]
   def subscriptions(id) do

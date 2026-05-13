@@ -230,6 +230,17 @@ defmodule EventBroker.Registry do
     {:reply, Map.get(state.registered_filter_specs, id, []), state}
   end
 
+  def handle_call({:add_middleware, filter_spec_list, fun}, _from, state) do
+    case Map.get(state.registered_pids, filter_spec_list) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      pid ->
+        EventBroker.FilterAgent.add_middleware(pid, fun)
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call(_msg, _from, state) do
     {:reply, :ok, state}
   end

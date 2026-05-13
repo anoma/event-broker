@@ -26,7 +26,8 @@ defmodule EventBroker.Log do
   end
 
   defp create_table(name, opts) do
-    storage = Application.get_env(:event_broker, :mnesia_storage, :disc_copies)
+    storage =
+      Application.get_env(:event_broker, :mnesia_storage, :disc_copies)
 
     case :mnesia.create_table(name, [{storage, [node()]} | opts]) do
       {:atomic, :ok} ->

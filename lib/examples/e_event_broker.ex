@@ -453,6 +453,80 @@ defmodule Examples.EEventBroker do
   end
 
   @doc """
+  I check that a drop middleware prevents events from being received.
+
+  I subscribe to a trivial filter, add a middleware that always drops,
+  send an event, and assert it is never received.
+  """
+  @spec middleware_drop() :: :ok
+  example middleware_drop do
+    trivial = [trivial_filter_spec()]
+    check_self_sub(trivial)
+
+    EventBroker.add_middleware(trivial, fn _event -> :drop end)
+
+    EventBroker.event(example_message_a())
+
+    refute_receive %EventBroker.Event{}
+
+    EventBroker.unsubscribe_me(trivial)
+    :ok
+  end
+
+  @doc """
+  I check that a middleware can transform an event before delivery.
+
+  I subscribe to a trivial filter, add a middleware that replaces the
+  event body, send an event, and assert the transformed event is received.
+  """
+  @spec middleware_transform() :: EventBroker.Event.t()
+  example middleware_transform do
+    trivial = [trivial_filter_spec()]
+    check_self_sub(trivial)
+
+    EventBroker.add_middleware(trivial, fn event ->
+      {:ok, %{event | body: :transformed}}
+    end)
+
+    EventBroker.event(example_message_a())
+
+    event =
+      receive do
+        event = %EventBroker.Event{} -> event
+      end
+
+    assert event.body == :transformed
+
+    EventBroker.unsubscribe_me(trivial)
+    event
+  end
+
+  @doc """
+  I check that a drop in the middleware chain short-circuits subsequent middleware.
+
+  I add two middleware: the first drops, the second would transform. I
+  assert that nothing is received, proving the chain stopped at the first.
+  """
+  @spec middleware_chain_short_circuit() :: :ok
+  example middleware_chain_short_circuit do
+    trivial = [trivial_filter_spec()]
+    check_self_sub(trivial)
+
+    EventBroker.add_middleware(trivial, fn _event -> :drop end)
+
+    EventBroker.add_middleware(trivial, fn event ->
+      {:ok, %{event | body: :transformed}}
+    end)
+
+    EventBroker.event(example_message_a())
+
+    refute_receive %EventBroker.Event{}
+
+    EventBroker.unsubscribe_me(trivial)
+    :ok
+  end
+
+  @doc """
   I check that modules with no filters cannot be registered.
 
   I unsub from all filters using `unsub_all/0` and then try to subscribe
