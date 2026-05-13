@@ -1,8 +1,8 @@
 defmodule EventBroker.Log do
   @moduledoc """
-  I am the write-ahead log for the event broker. I manage per-broker command
-  logs stored in Mnesia and maintain a registry of broker name to table pair
-  mappings. System time here refers to a monotonic counter per broker.
+  I am the write-ahead log for the event broker. I manage a command log stored
+  in Mnesia across two tables: `:command` for the log entries and `:meta` for
+  cursors. System time here refers to a global monotonic counter.
   """
 
   def start_mnesia() do
@@ -76,7 +76,7 @@ defmodule EventBroker.Log do
   end
 
   @doc """
-  I retrieve the current maximum time of the command log, where the next command will be written
+  I retrieve the current system time of the command log. The next command will be written at this value, then time is incremented.
   """
   @spec system_time() :: non_neg_integer() | :absent
   def system_time() do
@@ -98,7 +98,7 @@ defmodule EventBroker.Log do
   end
 
   @doc """
-  I read all commands for broker since time t. By default I list all commands. I must be called within a transaction.
+  I read all commands since time t, optionally filtered by command type. By default I list all commands. I must be called within a transaction.
   """
   @spec commands_since(non_neg_integer(), atom()) :: [EventBroker.Event.t()]
   def commands_since(t, command \\ :"$3") do

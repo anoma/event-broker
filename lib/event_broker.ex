@@ -12,10 +12,12 @@ defmodule EventBroker do
 
   - `event/1`
   - `transaction/1`
-  - `subscribe_me/1`
-  - `unsubscribe_me/1`
-  - `subscribe/2`
-  - `unsubscribe/2`
+  - `subscribe_me/2`
+  - `unsubscribe_me/2`
+  - `subscribe/3`
+  - `unsubscribe/3`
+  - `subscriptions/1`
+  - `my_subscriptions/0`
 
   ## Overview
 
@@ -132,8 +134,9 @@ defmodule EventBroker do
   @doc """
   I am the Event Broker event function.
 
-  I process any incoming events by sending them to all of Broker subscribers
-  using the `send/2` functionality. If I am wrapped inside an mnesia transaction, I will not trigger a fanout. 
+  I write the event to the command log and wake the broker to fan it out to
+  subscribers. If I am called inside an mnesia transaction, I write to the log
+  but do not trigger a fanout — the caller's transaction commit handles that.
   """
   @spec event(EventBroker.Event.t()) :: :ok
   def event(event = %EventBroker.Event{}) do
