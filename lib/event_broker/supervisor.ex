@@ -37,6 +37,10 @@ defmodule EventBroker.Supervisor do
       args
       |> Keyword.put_new(:dyn_sup_name, dyn_sup_name)
 
+    EventBroker.Log.start_mnesia()
+    EventBroker.Log.create_tables()
+    EventBroker.Log.init_times()
+
     children = [
       {EventBroker.Broker, args},
       {EventBroker.Registry, new_args},

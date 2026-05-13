@@ -2,9 +2,8 @@ defmodule EventBroker.FilterAgent do
   @moduledoc """
   I am a Filter Agent module.
 
-  I implement the base server behavior of the spawned filter agent. In
-  general, I monitor subscribers of an individual filtering agent and
-  send whichever events I receive to them.
+  I implement the base server behavior of the spawned filter agent. I receive
+  events, apply my filter spec, and forward matching events to my subscribers.
   """
 
   alias __MODULE__
@@ -24,7 +23,7 @@ defmodule EventBroker.FilterAgent do
 
     - `:spec` - The filter specification. This is a structure of a module
                 with a public filter API for the agent to call.
-    - `:subscribers` - The list of subscribers to send filtered messages to.
+    - `:subscribers` - The set of subscriber pids to send filtered messages to.
                        Default: MapSet.new()
     """
 
