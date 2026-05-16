@@ -11,7 +11,7 @@ by adding `event_broker` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:event_broker, "~> 0.1.0"}
+    {:event_broker, "~> 1.1.1"}
   ]
 end
 ```
