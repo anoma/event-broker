@@ -11,6 +11,7 @@ defmodule EventBroker do
   I have the following public functionality:
 
   - `event/1`
+  - `transaction/1`
   - `subscribe_me/1`
   - `unsubscribe_me/1`
   - `subscribe/2`
@@ -105,16 +106,45 @@ defmodule EventBroker do
   end
 
   @doc """
+  I am the Event Broker transaction function.
+
+  I process events within an mnesia transaction and upon commit, trigger a fanout to all Broker subscribers
+  """
+  @spec transaction((-> any()), atom()) :: {:ok, any()} | {:error, any()}
+  def transaction(fun, broker \\ EventBroker.Broker) do
+    case :mnesia.transaction(fn ->
+           tx_id = EventBroker.Log.system_time(broker)
+           Process.put(:eb_tx_id, tx_id)
+           fun.()
+         end) do
+      {:atomic, result} ->
+        GenServer.cast(broker, :wakeup)
+        {:ok, result}
+
+      {:aborted, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   I am the Event Broker event function.
 
   I process any incoming events by sending them to all of Broker subscribers
-  using the `send/2` functionality.
+  using the `send/2` functionality. If I am wrapped inside an mnesia transaction, I will not trigger a fanout. 
   """
-
   @spec event(EventBroker.Event.t()) :: :ok
   @spec event(EventBroker.Event.t(), atom()) :: :ok
   def event(event = %EventBroker.Event{}, broker \\ EventBroker.Broker) do
-    GenServer.cast(broker, {:event, event})
+    if :mnesia.is_transaction() do
+      EventBroker.Log.write_command(broker, Process.get(:eb_tx_id), :event, event)
+    else
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time(broker)
+        EventBroker.Log.write_command(broker, tx_id, :event, event)
+      end)
+
+      GenServer.cast(broker, :wakeup)
+    end
   end
 
   @doc """
