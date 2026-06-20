@@ -11,10 +11,13 @@ defmodule EventBroker do
   I have the following public functionality:
 
   - `event/1`
-  - `subscribe_me/1`
-  - `unsubscribe_me/1`
-  - `subscribe/2`
-  - `unsubscribe/2`
+  - `transaction/1`
+  - `subscribe_me/2`
+  - `unsubscribe_me/2`
+  - `subscribe/3`
+  - `unsubscribe/3`
+  - `subscriptions/1`
+  - `my_subscriptions/0`
 
   ## Overview
 
@@ -71,50 +74,89 @@ defmodule EventBroker do
 
   @impl true
   def start(_type, args \\ []) do
-    EventBroker.Supervisor.start_link(args)
+    {:ok, pid} = EventBroker.Supervisor.start_link(args)
+    EventBroker.Log.replay()
+    {:ok, pid}
   end
 
-  @typedoc """
-  I am a filter dependency specification, I am a list of filter specs listed
-  in the order in which the filter agents implementing said specs should be
-  subscribed to one another.
-  """
-
   @type filter_spec_list :: list(struct())
+  @type id :: pid() | atom() | filter_spec_list
 
   ############################################################
   #                      Public RPC API                      #
-  ############################################################
-
+  ############################################################  
   @doc """
-  I return the filter specs for the current process.
-  I return a list of filterspeclists.
+  I add a middleware function to the filter agent for the given filter spec list.
+
+  The function receives an event and returns `{:ok, event}` to continue
+  the chain or `:drop` to stop it.
   """
+  @spec add_middleware(
+          filter_spec_list(),
+          (EventBroker.Event.t() -> {:ok, EventBroker.Event.t()} | :drop),
+          atom()
+        ) :: :ok | {:error, :not_found}
+  def add_middleware(
+        filter_spec_list,
+        fun,
+        registry \\ EventBroker.Registry
+      ) do
+    GenServer.call(registry, {:add_middleware, filter_spec_list, fun})
+  end
+
   @spec my_subscriptions() :: [filter_spec_list]
   def my_subscriptions() do
     subscriptions(self())
   end
 
   @doc """
-  I return the filter specs for the given process id.
-  I return a list of filterspeclists.
+  I return the filter specs for the given subscriber id.
   """
-  @spec subscriptions(pid()) :: [filter_spec_list]
-  def subscriptions(pid) do
-    GenServer.call(EventBroker.Registry, {:subscriptions, pid})
+  @spec subscriptions(id()) :: [filter_spec_list]
+  def subscriptions(id) do
+    GenServer.call(EventBroker.Registry, {:subscriptions, id})
+  end
+
+  @doc """
+  I am the Event Broker transaction function.
+
+  I process events within an mnesia transaction and upon commit, trigger a fanout to all Broker subscribers
+  """
+  @spec transaction((-> any())) :: {:ok, any()} | {:error, any()}
+  def transaction(fun) do
+    case :mnesia.transaction(fn ->
+           tx_id = EventBroker.Log.system_time()
+           Process.put(:eb_tx_id, tx_id)
+           fun.()
+         end) do
+      {:atomic, result} ->
+        GenServer.cast(EventBroker.Broker, :wakeup)
+        {:ok, result}
+
+      {:aborted, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
   I am the Event Broker event function.
 
-  I process any incoming events by sending them to all of Broker subscribers
-  using the `send/2` functionality.
+  I write the event to the command log and wake the broker to fan it out to
+  subscribers. If I am called inside an mnesia transaction, I write to the log
+  but do not trigger a fanout — the caller's transaction commit handles that.
   """
-
   @spec event(EventBroker.Event.t()) :: :ok
-  @spec event(EventBroker.Event.t(), atom()) :: :ok
-  def event(event = %EventBroker.Event{}, broker \\ EventBroker.Broker) do
-    GenServer.cast(broker, {:event, event})
+  def event(event = %EventBroker.Event{}) do
+    if :mnesia.is_transaction() do
+      EventBroker.Log.write_command(Process.get(:eb_tx_id), :event, event)
+    else
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time()
+        EventBroker.Log.write_command(tx_id, :event, event)
+      end)
+
+      GenServer.cast(EventBroker.Broker, :wakeup)
+    end
   end
 
   @doc """
@@ -148,10 +190,24 @@ defmodule EventBroker do
   Filter Agent spawning is handled via DynamicSupervisor.
   """
 
-  @spec subscribe(pid(), filter_spec_list) :: :ok | String.t()
-  @spec subscribe(pid(), filter_spec_list, atom()) :: :ok | String.t()
-  def subscribe(pid, filter_spec_list, registry \\ EventBroker.Registry) do
-    GenServer.call(registry, {:subscribe, pid, filter_spec_list})
+  @spec subscribe(pid(), filter_spec_list(), id()) :: :ok | String.t()
+  def subscribe(pid, filter_spec_list, id_subscriber) do
+    unless is_pid(id_subscriber) do
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time()
+
+        EventBroker.Log.write_command(
+          tx_id,
+          :subscribe,
+          {id_subscriber, filter_spec_list}
+        )
+      end)
+    end
+
+    GenServer.call(
+      EventBroker.Registry,
+      {:subscribe_pid, pid, id_subscriber, filter_spec_list}
+    )
   end
 
   @doc """
@@ -160,10 +216,9 @@ defmodule EventBroker do
   I call `subscribe/2` where the first argument is `self()`
   """
 
-  @spec subscribe_me(filter_spec_list) :: :ok | String.t()
-  @spec subscribe_me(filter_spec_list, atom()) :: :ok | String.t()
-  def subscribe_me(filter_spec_list, registry \\ EventBroker.Registry) do
-    subscribe(self(), filter_spec_list, registry)
+  @spec subscribe_me(filter_spec_list, id()) :: :ok | String.t()
+  def subscribe_me(filter_spec_list, id_subscriber \\ self()) do
+    subscribe(self(), filter_spec_list, id_subscriber)
   end
 
   @doc """
@@ -182,9 +237,24 @@ defmodule EventBroker do
   all agents which have shut down from my registry map and return `:ok`
   """
 
-  @spec unsubscribe(pid(), filter_spec_list, atom()) :: :ok
-  def unsubscribe(pid, filter_spec_list, registry \\ EventBroker.Registry) do
-    GenServer.call(registry, {:unsubscribe, pid, filter_spec_list})
+  @spec unsubscribe(pid(), filter_spec_list(), id()) :: :ok
+  def unsubscribe(pid, filter_spec_list, id_subscriber) do
+    unless is_pid(id_subscriber) do
+      :mnesia.transaction(fn ->
+        tx_id = EventBroker.Log.system_time()
+
+        EventBroker.Log.write_command(
+          tx_id,
+          :unsubscribe,
+          {id_subscriber, filter_spec_list}
+        )
+      end)
+    end
+
+    GenServer.call(
+      EventBroker.Registry,
+      {:unsubscribe_pid, pid, id_subscriber, filter_spec_list}
+    )
   end
 
   @doc """
@@ -193,9 +263,8 @@ defmodule EventBroker do
   I call `unsubscribe/2` where the first argument is `self()`
   """
 
-  @spec unsubscribe_me(filter_spec_list) :: :ok
-  @spec unsubscribe_me(filter_spec_list, atom()) :: :ok
-  def unsubscribe_me(filter_spec_list, registry \\ EventBroker.Registry) do
-    unsubscribe(self(), filter_spec_list, registry)
+  @spec unsubscribe_me(filter_spec_list, id()) :: :ok
+  def unsubscribe_me(filter_spec_list, id_subscriber \\ self()) do
+    unsubscribe(self(), filter_spec_list, id_subscriber)
   end
 end
