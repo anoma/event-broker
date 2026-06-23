@@ -24,14 +24,12 @@ defmodule EventBroker.Broker do
   end
 
   @spec start_link(list()) :: GenServer.on_start()
-  def start_link(args \\ []) do
-    GenServer.start_link(__MODULE__, %EventBroker.Broker{},
-      name: args[:broker_name] || __MODULE__
-    )
+  def start_link(_args \\ []) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
   @impl true
-  def init(_opts) do
+  def init(_args) do
     {:ok, %EventBroker.Broker{}}
   end
 
@@ -54,8 +52,24 @@ defmodule EventBroker.Broker do
   end
 
   @impl true
-  def handle_cast({:event, event}, state) do
-    handle_info(event, state)
+  def handle_cast(:wakeup, state) do
+    {:atomic, events} =
+      :mnesia.transaction(fn ->
+        broker_time = EventBroker.Log.broker_time()
+        system_time = EventBroker.Log.system_time()
+        events = EventBroker.Log.commands_since(broker_time, :event)
+        EventBroker.Log.write_broker_time(system_time)
+        events
+      end)
+
+    # Broke 'er? I hardly know 'er!
+    
+    for {_table_name, _system_time, _tx_id, :event, event} <- events,
+        pid <- state.subscribers do
+      send(pid, event)
+    end
+
+    {:noreply, state}
   end
 
   def handle_cast(_msg, state) do
@@ -63,14 +77,6 @@ defmodule EventBroker.Broker do
   end
 
   @impl true
-  def handle_info(event = %EventBroker.Event{}, state) do
-    for pid <- state.subscribers do
-      send(pid, event)
-    end
-
-    {:noreply, state}
-  end
-
   def handle_info(_info, state) do
     {:noreply, state}
   end
