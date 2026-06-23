@@ -3,14 +3,14 @@ defmodule Examples.EEventBroker.Subscribe do
   I define examples on how to susbcribe to topics in the event broker.
   """
 
-  alias Examples.EEventBroker.EFilter
+  alias Examples.EEventBroker
   alias EventBroker.Event
 
   use ExExample
   import ExUnit.Assertions
 
   # A list of default filters to use in the examples below.
-  @filters [%EFilter.AcceptAll{}, %EFilter.Error{}]
+  @filters [%EEventBroker.Filter.AcceptAll{}, %EEventBroker.Filter.Error{}]
 
   @doc """
   I subscribe using the `Trivial` filter and assert that I receive any events
@@ -18,7 +18,7 @@ defmodule Examples.EEventBroker.Subscribe do
   """
   @spec subscribe_to_filter(struct()) :: {:received, any()}
   @spec subscribe_to_filter() :: {:received, any()}
-  example subscribe_to_filter(filter \\ %EFilter.AcceptAll{}) do
+  example subscribe_to_filter(filter \\ %EEventBroker.Filter.AcceptAll{}) do
     # subscribe to the trivial filter (i.e., all messages)
     EventBroker.subscribe_me([filter])
 
@@ -72,7 +72,7 @@ defmodule Examples.EEventBroker.Subscribe do
   """
   @spec unsubscribe_from_filter(struct()) :: {:received, any()}
   @spec unsubscribe_from_filter() :: {:received, any()}
-  example unsubscribe_from_filter(filter \\ %EFilter.AcceptAll{}) do
+  example unsubscribe_from_filter(filter \\ %EEventBroker.Filter.AcceptAll{}) do
     # subscribe to the trivial filter (i.e., all messages)
     EventBroker.subscribe_me([filter])
 
@@ -97,7 +97,7 @@ defmodule Examples.EEventBroker.Subscribe do
   @spec unsubscribe_on_down() :: any()
   example unsubscribe_on_down do
     # any filter will do
-    filter = %EFilter.AcceptAll{}
+    filter = %EEventBroker.Filter.AcceptAll{}
 
     this = self()
 

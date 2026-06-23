@@ -2,7 +2,7 @@ defmodule Examples.EEventBroker do
   @moduledoc false
 
   alias EventBroker.Event
-  alias EventBroker.Filters
+  alias Examples.EEventBroker
   alias EventBroker.Registry
   alias EventBroker.Supervisor
 
@@ -41,24 +41,24 @@ defmodule Examples.EEventBroker do
   end
 
   @doc """
-  I am the trivial filter structure. See `EventBroker.Filters.Trivial`
+  I am the trivial filter structure. S`
   """
 
-  @spec trivial_filter_spec() :: EventBroker.Filters.Trivial.t()
-  def trivial_filter_spec do
-    %EventBroker.Filters.Trivial{}
+  @spec accept_all_filter_spec() :: EEventBroker.Filter.AcceptAll.t()
+  def accept_all_filter_spec do
+    %EEventBroker.Filter.AcceptAll{}
   end
 
   @doc """
   I am the filter structure corresponding to a filter which sorts messages
   depending on whether they come from the module which calls the function.
 
-  See `EventBroker.Filters.SourceModule`
+  See `EEventBroker.Filter.SourceModule`
   """
 
-  @spec this_module_filter_spec() :: EventBroker.Filters.SourceModule.t()
+  @spec this_module_filter_spec() :: EEventBroker.Filter.SourceModule.t()
   def this_module_filter_spec do
-    %EventBroker.Filters.SourceModule{module: __MODULE__}
+    %EEventBroker.Filter.SourceModule{module: __MODULE__}
   end
 
   @doc """
@@ -102,9 +102,9 @@ defmodule Examples.EEventBroker do
   @spec subscribe_and_check() :: {:received, Event.t()}
   example subscribe_and_check do
     EventBroker.subscribe_me([
-      trivial_filter_spec(),
+      accept_all_filter_spec(),
       this_module_filter_spec(),
-      trivial_filter_spec()
+      accept_all_filter_spec()
     ])
 
     EventBroker.event(example_message_a())
@@ -120,9 +120,9 @@ defmodule Examples.EEventBroker do
       end
 
     EventBroker.unsubscribe_me([
-      trivial_filter_spec(),
+      accept_all_filter_spec(),
       this_module_filter_spec(),
-      trivial_filter_spec()
+      accept_all_filter_spec()
     ])
 
     {:received, event}
@@ -264,7 +264,7 @@ defmodule Examples.EEventBroker do
           {Registry.t(), list(), pid()}
   @spec message_works_trivial() :: {Registry.t(), list(), pid()}
   example message_works_trivial(string \\ "subscribing works") do
-    trivial = [trivial_filter_spec()]
+    trivial = [accept_all_filter_spec()]
     {_, trivial_agent} = check_self_sub(trivial)
 
     message = string |> example_message_a()
@@ -289,7 +289,7 @@ defmodule Examples.EEventBroker do
 
   @spec un_subscribing_works_atomic(list()) :: Registry.t()
   @spec un_subscribing_works_atomic() :: Registry.t()
-  example un_subscribing_works_atomic(list \\ [trivial_filter_spec()]) do
+  example un_subscribing_works_atomic(list \\ [accept_all_filter_spec()]) do
     {state, pid} = check_self_sub(list)
 
     EventBroker.unsubscribe_me(list)
@@ -312,9 +312,9 @@ defmodule Examples.EEventBroker do
   """
 
   @spec message_gets_blocked(String.t()) ::
-          {Registry.t(), [Filters.SourceModule.t()], pid()}
+          {Registry.t(), [EEventBroker.Filter.SourceModule.t()], pid()}
   @spec message_gets_blocked() ::
-          {Registry.t(), [Filters.SourceModule.t()], pid()}
+          {Registry.t(), [EEventBroker.Filter.SourceModule.t()], pid()}
   example message_gets_blocked(string \\ "blocked message") do
     module_spec = [this_module_filter_spec()]
 
@@ -346,8 +346,8 @@ defmodule Examples.EEventBroker do
   @spec add_filter_on_top(list()) :: {Registry.t(), list(), pid()}
   @spec add_filter_on_top() :: {Registry.t(), list(), pid()}
   example add_filter_on_top(
-            filter1 \\ [trivial_filter_spec()],
-            filter2 \\ [trivial_filter_spec()]
+            filter1 \\ [accept_all_filter_spec()],
+            filter2 \\ [accept_all_filter_spec()]
           ) do
     filter = filter1 ++ filter2
 
@@ -385,11 +385,11 @@ defmodule Examples.EEventBroker do
   @spec complex_filter_message(String.t()) :: Registry.t()
   @spec complex_filter_message() :: Registry.t()
   example complex_filter_message(string \\ "complex filter message") do
-    trivial = [trivial_filter_spec()]
+    trivial = [accept_all_filter_spec()]
 
     add_filter_on_top(trivial, [
       this_module_filter_spec(),
-      trivial_filter_spec()
+      accept_all_filter_spec()
     ])
 
     good_msg = (string <> " good") |> example_message_a()
@@ -453,7 +453,7 @@ defmodule Examples.EEventBroker do
 
         :ok =
           EventBroker.subscribe_me([
-            trivial_filter_spec()
+            accept_all_filter_spec()
           ])
 
         send(this, :first)
@@ -475,7 +475,7 @@ defmodule Examples.EEventBroker do
 
         :ok =
           EventBroker.subscribe_me([
-            trivial_filter_spec()
+            accept_all_filter_spec()
           ])
 
         send(this, :second)
@@ -508,7 +508,7 @@ defmodule Examples.EEventBroker do
     Process.exit(first, :kill)
     Process.sleep(100)
 
-    assert [[], [%EventBroker.Filters.Trivial{}]] ==
+    assert [[], [%EEventBroker.Filter.AcceptAll{}]] ==
              Map.keys(:sys.get_state(EventBroker.Registry).registered_filters)
 
     # kill the first subscriber

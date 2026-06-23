@@ -1,4 +1,4 @@
-defmodule Examples.EEventBroker.EFilter do
+defmodule Examples.EEventBroker.Filter do
   @moduledoc """
   I define examples on how to use the deffilter macro to create filters for the event broker.
   """
@@ -27,6 +27,23 @@ defmodule Examples.EEventBroker.EFilter do
   # """
   deffilter Error do
     %Event{body: %{level: :error}} -> true
+    _ -> false
+  end
+
+  deffilter ManyFields,
+    params_module: module(),
+    params_foo: term(),
+    params_bar: term() do
+    %EventBroker.Event{
+      source_module: event_module,
+      body: {event_foo, event_bar}
+    } ->
+      params_module == event_module && params_foo == event_foo &&
+        params_bar == event_bar
+  end
+
+  deffilter SourceModule, module: module() do
+    %EventBroker.Event{source_module: ^module} -> true
     _ -> false
   end
 end

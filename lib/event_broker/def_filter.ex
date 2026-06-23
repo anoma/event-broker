@@ -12,8 +12,7 @@ defmodule EventBroker.DefFilter do
   @doc """
   I am the deffilter macro, permitting inline succinct filter
   definitions.  I take a module name (which becomes a child of the
-  current module, e.g.  deffilter Trivial inside EventBroker.Filters
-  defines EventBroker.Filters.Trivial), and a do-block containing case
+  current module, and a do-block containing case
   patterns against which the event is matched and case bodies
   evaluating to true or false.
 
