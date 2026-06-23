@@ -20,19 +20,20 @@ defmodule EventBroker.Broker do
                        Default: Map.Set.new()
     """
 
+    field(:name, atom(), enforce: true)
     field(:subscribers, MapSet.t(pid()), default: MapSet.new())
   end
 
   @spec start_link(list()) :: GenServer.on_start()
   def start_link(args \\ []) do
-    GenServer.start_link(__MODULE__, %EventBroker.Broker{},
-      name: args[:broker_name] || __MODULE__
-    )
+    name = args[:broker_name] || __MODULE__
+    GenServer.start_link(__MODULE__, name, name: name)
   end
 
   @impl true
-  def init(_opts) do
-    {:ok, %EventBroker.Broker{}}
+  def init(name) do
+    EventBroker.Log.register_broker(name)
+    {:ok, %EventBroker.Broker{name: name}}
   end
 
   ############################################################
@@ -54,8 +55,22 @@ defmodule EventBroker.Broker do
   end
 
   @impl true
-  def handle_cast({:event, event}, state) do
-    handle_info(event, state)
+  def handle_cast(:wakeup, state) do
+    {:atomic, events} =
+      :mnesia.transaction(fn ->
+        broker_time = EventBroker.Log.broker_time(state.name)
+        system_time = EventBroker.Log.system_time(state.name)
+        events = EventBroker.Log.events_since(broker_time, state.name)
+        EventBroker.Log.write_broker_time(state.name, system_time)
+        events
+      end)
+
+    for {_table_name, _system_time, _tx_id, event} <- events,
+        pid <- state.subscribers do
+      send(pid, event)
+    end
+
+    {:noreply, state}
   end
 
   def handle_cast(_msg, state) do
@@ -63,14 +78,6 @@ defmodule EventBroker.Broker do
   end
 
   @impl true
-  def handle_info(event = %EventBroker.Event{}, state) do
-    for pid <- state.subscribers do
-      send(pid, event)
-    end
-
-    {:noreply, state}
-  end
-
   def handle_info(_info, state) do
     {:noreply, state}
   end

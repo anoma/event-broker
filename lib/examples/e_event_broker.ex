@@ -129,6 +129,52 @@ defmodule Examples.EEventBroker do
   end
 
   @doc """
+  I am a function which tests EventBroker transactions.
+  """
+  @spec transact() :: {:received, [Event.t()]}
+  example transact do
+    EventBroker.subscribe_me([
+      trivial_filter_spec(),
+      this_module_filter_spec(),
+      trivial_filter_spec()
+    ])
+
+    {:atomic, t1} =
+      :mnesia.transaction(fn ->
+        EventBroker.Log.broker_time(EventBroker.Broker)
+      end)
+
+    EventBroker.transaction(fn ->
+      EventBroker.event(example_message_a())
+      EventBroker.event(example_message_b())
+    end)
+
+    {:ok, event} =
+      receive do
+        event = %Event{} ->
+          {:ok, event}
+
+        _ ->
+          :error
+      end
+
+    {:atomic, t2} =
+      :mnesia.transaction(fn ->
+        EventBroker.Log.broker_time(EventBroker.Broker)
+      end)
+
+    assert t2 == t1 + 2
+
+    EventBroker.unsubscribe_me([
+      trivial_filter_spec(),
+      this_module_filter_spec(),
+      trivial_filter_spec()
+    ])
+
+    {:received, event}
+  end
+
+  @doc """
   I am a function which sends a million messages through a specified number
   of filters.
 
