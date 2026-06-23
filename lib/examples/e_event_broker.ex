@@ -129,6 +129,52 @@ defmodule Examples.EEventBroker do
   end
 
   @doc """
+  I am a function which tests EventBroker transactions.
+  """
+  @spec transact() :: {:received, [Event.t()]}
+  example transact do
+    EventBroker.subscribe_me([
+      trivial_filter_spec(),
+      this_module_filter_spec(),
+      trivial_filter_spec()
+    ])
+
+    {:atomic, t1} =
+      :mnesia.transaction(fn ->
+        EventBroker.Log.broker_time()
+      end)
+
+    EventBroker.transaction(fn ->
+      EventBroker.event(example_message_a())
+      EventBroker.event(example_message_b())
+    end)
+
+    {:ok, event} =
+      receive do
+        event = %Event{} ->
+          {:ok, event}
+
+        _ ->
+          :error
+      end
+
+    {:atomic, t2} =
+      :mnesia.transaction(fn ->
+        EventBroker.Log.broker_time()
+      end)
+
+    assert t2 == t1 + 2
+
+    # EventBroker.unsubscribe_me([
+    #   trivial_filter_spec(),
+    #   this_module_filter_spec(),
+    #   trivial_filter_spec()
+    # ])
+
+    {:received, event}
+  end
+
+  @doc """
   I am a function which sends a million messages through a specified number
   of filters.
 
@@ -215,7 +261,7 @@ defmodule Examples.EEventBroker do
     assert :ok = EventBroker.subscribe_me(list)
 
     agent =
-      :sys.get_state(Registry).registered_filters |> Map.get(list)
+      :sys.get_state(Registry).registered_pids |> Map.get(list)
 
     assert Process.alive?(agent)
 
@@ -241,7 +287,7 @@ defmodule Examples.EEventBroker do
     EventBroker.subscribe_me(list)
 
     agent =
-      :sys.get_state(Registry).registered_filters |> Map.get(list)
+      :sys.get_state(Registry).registered_pids |> Map.get(list)
 
     assert Process.alive?(agent)
 
@@ -354,7 +400,7 @@ defmodule Examples.EEventBroker do
     {_, pid1} = check_self_sub(filter1)
     {state, pid2} = check_sub_no_unsub(filter)
 
-    registered = state.registered_filters
+    registered = state.registered_pids
 
     pid_top_sub = Map.get(registered, filter1 ++ [hd(filter2)])
 
@@ -441,8 +487,9 @@ defmodule Examples.EEventBroker do
 
     # assert that the registry is now empty
     assert [[]] ==
-             :sys.get_state(EventBroker.Registry).registered_filters
+             :sys.get_state(EventBroker.Registry).registered_pids
              |> Map.keys()
+             |> Enum.filter(&is_list/1)
 
     # get the pid of the shell to wait for processes to be ready
     this = self()
@@ -499,23 +546,28 @@ defmodule Examples.EEventBroker do
       :second -> :ok
     end
 
-    assert [first, second] ==
-             Map.keys(
-               :sys.get_state(EventBroker.Registry).registered_subscribers
-             )
+    assert MapSet.new([first, second]) ==
+             :sys.get_state(EventBroker.Registry).registered_filter_specs
+             |> Map.keys()
+             |> MapSet.new()
 
     # kill the first subscriber
     Process.exit(first, :kill)
     Process.sleep(100)
 
-    assert [[], [%EventBroker.Filters.Trivial{}]] ==
-             Map.keys(:sys.get_state(EventBroker.Registry).registered_filters)
+    assert MapSet.new([[], [%EventBroker.Filters.Trivial{}]]) ==
+             :sys.get_state(EventBroker.Registry).registered_pids
+             |> Map.keys()
+             |> Enum.filter(&is_list/1)
+             |> MapSet.new()
 
-    # kill the first subscriber
+    # kill the second subscriber
     Process.exit(second, :kill)
     Process.sleep(100)
 
     assert [[]] ==
-             Map.keys(:sys.get_state(EventBroker.Registry).registered_filters)
+             :sys.get_state(EventBroker.Registry).registered_pids
+             |> Map.keys()
+             |> Enum.filter(&is_list/1)
   end
 end
